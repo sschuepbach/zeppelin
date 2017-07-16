@@ -17,17 +17,13 @@
 
 package org.apache.zeppelin.elasticsearch;
 
+import static java.util.Arrays.asList;
 import static org.elasticsearch.common.xcontent.XContentFactory.jsonBuilder;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
-import java.util.List;
-import java.util.Properties;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.lang.math.RandomUtils;
@@ -40,8 +36,6 @@ import org.apache.zeppelin.interpreter.thrift.InterpreterCompletion;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.elasticsearch.client.Client;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.node.Node;
-import org.elasticsearch.node.NodeBuilder;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -57,7 +51,6 @@ public class ElasticsearchInterpreterTest {
   @DataPoint public static ElasticsearchInterpreter httpInterpreter;
 
   private static Client elsClient;
-  private static Node elsNode;
 
   private static final String[] METHODS = { "GET", "PUT", "DELETE", "POST" };
   private static final int[] STATUS = { 200, 404, 500, 403 };
@@ -74,16 +67,13 @@ public class ElasticsearchInterpreterTest {
   @BeforeClass
   public static void populate() throws IOException {
 
-    final Settings settings = Settings.settingsBuilder()
+    final Settings settings = Settings.builder()
       .put("cluster.name", ELS_CLUSTER_NAME)
       .put("network.host", ELS_HOST)
       .put("http.port", ELS_HTTP_PORT)
       .put("transport.tcp.port", ELS_TRANSPORT_PORT)
       .put("path.home", ELS_PATH)
       .build();
-
-    elsNode = NodeBuilder.nodeBuilder().settings(settings).node();
-    elsClient = elsNode.client();
 
     elsClient.admin().indices().prepareCreate("logs")
       .addMapping("http", jsonBuilder()
@@ -95,14 +85,13 @@ public class ElasticsearchInterpreterTest {
 
     for (int i = 0; i < 48; i++) {
       elsClient.prepareIndex("logs", "http", "" + i)
-        .setRefresh(true)
         .setSource(jsonBuilder()
           .startObject()
             .field("date", new Date())
             .startObject("request")
               .field("method", METHODS[RandomUtils.nextInt(METHODS.length)])
               .field("url", "/zeppelin/" + UUID.randomUUID().toString())
-              .field("headers", Arrays.asList("Accept: *.*", "Host: apache.org"))
+              .field("headers", asList("Accept: *.*", "Host: apache.org"))
             .endObject()
             .field("status", STATUS[RandomUtils.nextInt(STATUS.length)])
             .field("content_length", RandomUtils.nextInt(2000))
@@ -112,14 +101,13 @@ public class ElasticsearchInterpreterTest {
 
     for (int i = 1; i < 3; i++) {
       elsClient.prepareIndex("logs", "http", "very/strange/id#" + i)
-        .setRefresh(true)
         .setSource(jsonBuilder()
             .startObject()
               .field("date", new Date())
               .startObject("request")
                 .field("method", METHODS[RandomUtils.nextInt(METHODS.length)])
                 .field("url", "/zeppelin/" + UUID.randomUUID().toString())
-                .field("headers", Arrays.asList("Accept: *.*", "Host: apache.org"))
+                .field("headers", asList("Accept: *.*", "Host: apache.org"))
               .endObject()
               .field("status", STATUS[RandomUtils.nextInt(STATUS.length)])
               .field("content_length", RandomUtils.nextInt(2000))
@@ -157,9 +145,6 @@ public class ElasticsearchInterpreterTest {
       elsClient.close();
     }
 
-    if (elsNode != null) {
-      elsNode.close();
-    }
   }
 
   private InterpreterContext buildContext(String noteAndParagraphId) {
@@ -180,7 +165,7 @@ public class ElasticsearchInterpreterTest {
     assertEquals(Code.SUCCESS, res.code());
     assertEquals("50", res.message().get(0).getData());
     assertNotNull(ctx.getAngularObjectRegistry().get("count_testCount", null, null));
-    assertEquals(50l, ctx.getAngularObjectRegistry().get("count_testCount", null, null).get());
+    assertEquals(50L, ctx.getAngularObjectRegistry().get("count_testCount", null, null).get());
 
     res = interpreter.interpret("count /logs { \"query\": { \"match\": { \"status\": 500 } } }", ctx);
     assertEquals(Code.SUCCESS, res.code());
@@ -306,8 +291,8 @@ public class ElasticsearchInterpreterTest {
 
   @Theory
   public void testCompletion(ElasticsearchInterpreter interpreter) {
-    final List<InterpreterCompletion> expectedResultOne = Arrays.asList(new InterpreterCompletion("count", "count", CompletionType.command.name()));
-    final List<InterpreterCompletion> expectedResultTwo = Arrays.asList(new InterpreterCompletion("help", "help", CompletionType.command.name()));
+    final List<InterpreterCompletion> expectedResultOne = Collections.singletonList(new InterpreterCompletion("count", "count", CompletionType.command.name()));
+    final List<InterpreterCompletion> expectedResultTwo = Collections.singletonList(new InterpreterCompletion("help", "help", CompletionType.command.name()));
 
     final List<InterpreterCompletion> resultOne = interpreter.completion("co", 0, null);
     final List<InterpreterCompletion> resultTwo = interpreter.completion("he", 0, null);

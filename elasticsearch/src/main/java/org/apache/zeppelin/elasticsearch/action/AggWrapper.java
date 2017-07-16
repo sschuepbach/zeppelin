@@ -22,19 +22,10 @@ package org.apache.zeppelin.elasticsearch.action;
  */
 public class AggWrapper {
 
-  /** Type of an aggregation (to know if there are buckets or not) */
-  public enum AggregationType { SIMPLE, MULTI_BUCKETS };
-
-  private final AggregationType type;
   private final String result;
 
-  public AggWrapper(AggregationType type, String result) {
-    this.type = type;
+  public AggWrapper(String result) {
     this.result = result;
-  }
-
-  public AggregationType getType() {
-    return type;
   }
 
   public String getResult() {

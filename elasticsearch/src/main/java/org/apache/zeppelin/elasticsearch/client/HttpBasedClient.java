@@ -17,22 +17,6 @@
 
 package org.apache.zeppelin.elasticsearch.client;
 
-import java.io.UnsupportedEncodingException;
-import java.net.URLEncoder;
-import java.util.Iterator;
-import java.util.Map;
-import java.util.Properties;
-
-import org.apache.commons.lang3.StringUtils;
-import org.apache.zeppelin.elasticsearch.ElasticsearchInterpreter;
-import org.apache.zeppelin.elasticsearch.action.ActionException;
-import org.apache.zeppelin.elasticsearch.action.ActionResponse;
-import org.apache.zeppelin.elasticsearch.action.AggWrapper;
-import org.apache.zeppelin.elasticsearch.action.AggWrapper.AggregationType;
-import org.apache.zeppelin.elasticsearch.action.HitWrapper;
-import org.json.JSONArray;
-import org.json.JSONObject;
-
 import com.google.common.base.Joiner;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -43,6 +27,19 @@ import com.mashape.unirest.http.Unirest;
 import com.mashape.unirest.http.exceptions.UnirestException;
 import com.mashape.unirest.request.HttpRequest;
 import com.mashape.unirest.request.HttpRequestWithBody;
+import org.apache.commons.lang3.StringUtils;
+import org.apache.zeppelin.elasticsearch.ElasticsearchInterpreter;
+import org.apache.zeppelin.elasticsearch.action.ActionException;
+import org.apache.zeppelin.elasticsearch.action.ActionResponse;
+import org.apache.zeppelin.elasticsearch.action.AggWrapper;
+import org.apache.zeppelin.elasticsearch.action.HitWrapper;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
+import java.util.Map;
+import java.util.Properties;
 
 /**
  * Elasticsearch client using the HTTP API.
@@ -50,7 +47,8 @@ import com.mashape.unirest.request.HttpRequestWithBody;
 public class HttpBasedClient implements ElasticsearchClient {
 
   private static final String QUERY_STRING_TEMPLATE =
-      "{ \"query\": { \"query_string\": { \"query\": \"_Q_\", \"analyze_wildcard\": \"true\" } } }";
+          "{ \"query\": { \"query_string\": " +
+                  "{ \"query\": \"_Q_\", \"analyze_wildcard\": \"true\" } } }";
 
   private final String host;
   private final int port;
@@ -78,8 +76,8 @@ public class HttpBasedClient implements ElasticsearchClient {
     return obj;
   }
 
-  private JSONArray getFieldAsArray(JSONObject obj, String field) {
-    final String[] fields = field.split("/");
+  private JSONArray getFieldAsArray(JSONObject obj) {
+    final String[] fields = "hits/hits".split("/");
     final JSONObject parent = getParentField(obj, fields);
     return parent.getJSONArray(fields[fields.length - 1]);
   }
@@ -92,8 +90,8 @@ public class HttpBasedClient implements ElasticsearchClient {
     return json.getObject().get(field).toString();
   }
 
-  private long getFieldAsLong(HttpResponse<JsonNode> response, String field) {
-    final String[] fields = field.split("/");
+  private long getFieldAsLong(HttpResponse<JsonNode> response) {
+    final String[] fields = "hits/total".split("/");
     final JSONObject obj = getParentField(response.getBody().getObject(), fields);
     return obj.getLong(fields[fields.length - 1]);
   }
@@ -114,24 +112,22 @@ public class HttpBasedClient implements ElasticsearchClient {
               if (id.equals(encodedId)) {
                 // No difference, use directly the id
                 buffer.append("/").append(id);
-              }
-              else {
+              } else {
                 // There are differences: to avoid problems with some special characters
                 // such as / and # in id, use a "terms" query
                 buffer.append("/_search?source=")
-                  .append(URLEncoder
-                      .encode("{\"query\":{\"terms\":{\"_id\":[\"" + id + "\"]}}}", "UTF-8"));
+                        .append(URLEncoder
+                                .encode("{\"query\":{\"terms\":{\"_id\":[\"" +
+                                        id + "\"]}}}", "UTF-8"));
               }
-            }
-            else {
+            } else {
               buffer.append("/").append(id);
             }
           }
         }
       }
       return buffer.toString();
-    }
-    catch (final UnsupportedEncodingException e) {
+    } catch (final UnsupportedEncodingException e) {
       throw new ActionException(e);
     }
   }
@@ -144,7 +140,7 @@ public class HttpBasedClient implements ElasticsearchClient {
 
   @Override
   public ActionResponse get(String index, String type, String id) {
-    ActionResponse response = null;
+    ActionResponse response;
     try {
       final HttpRequest request = Unirest.get(getUrl(index, type, id, true));
       if (StringUtils.isNotEmpty(username)) {
@@ -158,36 +154,32 @@ public class HttpBasedClient implements ElasticsearchClient {
         final JsonNode body = new JsonNode(result.getBody());
         if (body.getObject().has("_index")) {
           response = new ActionResponse()
-              .succeeded(true)
-              .hit(new HitWrapper(
-                  getFieldAsString(body, "_index"),
-                  getFieldAsString(body, "_type"),
-                  getFieldAsString(body, "_id"),
-                  getFieldAsString(body, "_source")));
-        }
-        else {
-          final JSONArray hits = getFieldAsArray(body.getObject(), "hits/hits");
+                  .succeeded(true)
+                  .hit(new HitWrapper(
+                          getFieldAsString(body, "_index"),
+                          getFieldAsString(body, "_type"),
+                          getFieldAsString(body, "_id"),
+                          getFieldAsString(body, "_source")));
+        } else {
+          final JSONArray hits = getFieldAsArray(body.getObject());
           final JSONObject hit = (JSONObject) hits.iterator().next();
           response = new ActionResponse()
-              .succeeded(true)
-              .hit(new HitWrapper(
-                  hit.getString("_index"),
-                  hit.getString("_type"),
-                  hit.getString("_id"),
-                  hit.opt("_source").toString()));
+                  .succeeded(true)
+                  .hit(new HitWrapper(
+                          hit.getString("_index"),
+                          hit.getString("_type"),
+                          hit.getString("_id"),
+                          hit.opt("_source").toString()));
         }
-      }
-      else {
+      } else {
         if (result.getStatus() == 404) {
           response = new ActionResponse()
-              .succeeded(false);
-        }
-        else {
+                  .succeeded(false);
+        } else {
           throw new ActionException(result.getBody());
         }
       }
-    }
-    catch (final UnirestException e) {
+    } catch (final UnirestException e) {
       throw new ActionException(e);
     }
     return response;
@@ -195,7 +187,7 @@ public class HttpBasedClient implements ElasticsearchClient {
 
   @Override
   public ActionResponse delete(String index, String type, String id) {
-    ActionResponse response = null;
+    ActionResponse response;
     try {
       final HttpRequest request = Unirest.delete(getUrl(index, type, id, true));
       if (StringUtils.isNotEmpty(username)) {
@@ -208,18 +200,16 @@ public class HttpBasedClient implements ElasticsearchClient {
       if (isSucceeded) {
         final JsonNode body = new JsonNode(result.getBody());
         response = new ActionResponse()
-            .succeeded(true)
-            .hit(new HitWrapper(
-                getFieldAsString(body, "_index"),
-                getFieldAsString(body, "_type"),
-                getFieldAsString(body, "_id"),
-                null));
-      }
-      else {
+                .succeeded(true)
+                .hit(new HitWrapper(
+                        getFieldAsString(body, "_index"),
+                        getFieldAsString(body, "_type"),
+                        getFieldAsString(body, "_id"),
+                        null));
+      } else {
         throw new ActionException(result.getBody());
       }
-    }
-    catch (final UnirestException e) {
+    } catch (final UnirestException e) {
       throw new ActionException(e);
     }
     return response;
@@ -227,19 +217,18 @@ public class HttpBasedClient implements ElasticsearchClient {
 
   @Override
   public ActionResponse index(String index, String type, String id, String data) {
-    ActionResponse response = null;
+    ActionResponse response;
     try {
-      HttpRequestWithBody request = null;
+      HttpRequestWithBody request;
       if (StringUtils.isEmpty(id)) {
         request = Unirest.post(getUrl(index, type, id, false));
-      }
-      else {
+      } else {
         request = Unirest.put(getUrl(index, type, id, false));
       }
       request
-          .header("Accept", "application/json")
-          .header("Content-Type", "application/json")
-          .body(data).getHttpRequest();
+              .header("Accept", "application/json")
+              .header("Content-Type", "application/json")
+              .body(data).getHttpRequest();
       if (StringUtils.isNotEmpty(username)) {
         request.basicAuth(username, password);
       }
@@ -249,18 +238,16 @@ public class HttpBasedClient implements ElasticsearchClient {
 
       if (isSucceeded) {
         response = new ActionResponse()
-            .succeeded(true)
-            .hit(new HitWrapper(
-                getFieldAsString(result, "_index"),
-                getFieldAsString(result, "_type"),
-                getFieldAsString(result, "_id"),
-                null));
-      }
-      else {
+                .succeeded(true)
+                .hit(new HitWrapper(
+                        getFieldAsString(result, "_index"),
+                        getFieldAsString(result, "_type"),
+                        getFieldAsString(result, "_id"),
+                        null));
+      } else {
         throw new ActionException(result.getBody().toString());
       }
-    }
-    catch (final UnirestException e) {
+    } catch (final UnirestException e) {
       throw new ActionException(e);
     }
     return response;
@@ -268,15 +255,14 @@ public class HttpBasedClient implements ElasticsearchClient {
 
   @Override
   public ActionResponse search(String[] indices, String[] types, String query, int size) {
-    ActionResponse response = null;
+    ActionResponse response;
 
     if (!StringUtils.isEmpty(query)) {
       // The query can be either JSON-formatted, nor a Lucene query
       // So, try to parse as a JSON => if there is an error, consider the query a Lucene one
       try {
         gson.fromJson(query, Map.class);
-      }
-      catch (final JsonParseException e) {
+      } catch (final JsonParseException e) {
         // This is not a JSON (or maybe not well formatted...)
         query = QUERY_STRING_TEMPLATE.replace("_Q_", query);
       }
@@ -284,8 +270,8 @@ public class HttpBasedClient implements ElasticsearchClient {
 
     try {
       final HttpRequestWithBody request = Unirest
-          .post(getUrl(indices, types) + "/_search?size=" + size)
-          .header("Content-Type", "application/json");
+              .post(getUrl(indices, types) + "/_search?size=" + size)
+              .header("Content-Type", "application/json");
 
       if (StringUtils.isNoneEmpty(query)) {
         request.header("Accept", "application/json").body(query);
@@ -299,11 +285,11 @@ public class HttpBasedClient implements ElasticsearchClient {
       final JSONObject body = result.getBody() != null ? result.getBody().getObject() : null;
 
       if (isSucceeded(result)) {
-        final long total = getFieldAsLong(result, "hits/total");
+        final long total = getFieldAsLong(result);
 
         response = new ActionResponse()
-            .succeeded(true)
-            .totalHits(total);
+                .succeeded(true)
+                .totalHits(total);
 
         if (containsAggs(result)) {
           JSONObject aggregationsMap = body.getJSONObject("aggregations");
@@ -311,44 +297,39 @@ public class HttpBasedClient implements ElasticsearchClient {
             aggregationsMap = body.getJSONObject("aggs");
           }
 
-          for (final String key: aggregationsMap.keySet()) {
+          for (final String key : aggregationsMap.keySet()) {
             final JSONObject aggResult = aggregationsMap.getJSONObject(key);
             if (aggResult.has("buckets")) {
               // Multi-bucket aggregations
-              final Iterator<Object> buckets = aggResult.getJSONArray("buckets").iterator();
-              while (buckets.hasNext()) {
+              for (Object o : aggResult.getJSONArray("buckets")) {
                 response.addAggregation(
-                    new AggWrapper(AggregationType.MULTI_BUCKETS, buckets.next().toString()));
+                        new AggWrapper(o.toString()));
               }
-            }
-            else {
+            } else {
               response.addAggregation(
-                  new AggWrapper(AggregationType.SIMPLE, aggregationsMap.toString()));
+                      new AggWrapper(aggregationsMap.toString()));
             }
             break; // Keep only one aggregation
           }
-        }
-        else if (size > 0 && total > 0) {
-          final JSONArray hits = getFieldAsArray(body, "hits/hits");
-          final Iterator<Object> iter = hits.iterator();
+        } else if (size > 0 && total > 0) {
+          final JSONArray hits = getFieldAsArray(body);
 
-          while (iter.hasNext()) {
-            final JSONObject hit = (JSONObject) iter.next();
+          for (Object hit1 : hits) {
+            final JSONObject hit = (JSONObject) hit1;
             final Object data =
-                hit.opt("_source") != null ? hit.opt("_source") : hit.opt("fields");
+                    hit.opt("_source") !=
+                            null ? hit.opt("_source") : hit.opt("fields");
             response.addHit(new HitWrapper(
-                hit.getString("_index"),
-                hit.getString("_type"),
-                hit.getString("_id"),
-                data.toString()));
+                    hit.getString("_index"),
+                    hit.getString("_type"),
+                    hit.getString("_id"),
+                    data.toString()));
           }
         }
-      }
-      else {
+      } else {
         throw new ActionException(body.get("error").toString());
       }
-    }
-    catch (final UnirestException e) {
+    } catch (final UnirestException e) {
       throw new ActionException(e);
     }
 
@@ -357,8 +338,8 @@ public class HttpBasedClient implements ElasticsearchClient {
 
   private boolean containsAggs(HttpResponse<JsonNode> result) {
     return result.getBody() != null &&
-        (result.getBody().getObject().has("aggregations") ||
-            result.getBody().getObject().has("aggs"));
+            (result.getBody().getObject().has("aggregations") ||
+                    result.getBody().getObject().has("aggs"));
   }
 
   @Override
